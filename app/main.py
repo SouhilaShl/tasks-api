@@ -15,8 +15,8 @@ _next_id = 1
 
 @app.get("/health")
 def health():
-    return {"status": "ok"}
-
+    # return {"status": "ok"}
+    return {"status": "broken"}
 @app.post("/tasks", response_model=Task, status_code=201)
 def create_task(payload: TaskIn):
     global _next_id

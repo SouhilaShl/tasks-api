@@ -61,7 +61,7 @@ flowchart TD
 
     C --> D[Job: test<br/>pytest + ruff]
     C --> E[Job: security<br/>Trivy - SCA on requirements.txt<br/>HIGH, CRITICAL - exit-code 1]
-    B --> F[SonarCloud<br/>GitHub App - SAST + Quality Gate]
+    C --> F[Job: SonarCloud<br/>SAST + Quality Gate]
 
     D --> G{Branch protection<br/>3 required checks}
     E --> G

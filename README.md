@@ -96,7 +96,7 @@ Nothing is ever committed directly to `main`.
 |---|---|
 | `CI / test` | pytest test suite and the ruff linter |
 | `CI / security` | Trivy dependency scan |
-| `SonarCloud Code Analysis` | static analysis and the Quality Gate |
+| `CI / SonarCloud` | SonarCloud static analysis and the Quality Gate |
 
 Required checks are what turn advice into a rule. Without them the scans still run, but a developer can ignore a red result and merge anyway. With them, the merge button is physically unavailable until the problem is fixed.
 
@@ -104,9 +104,9 @@ Required checks are what turn advice into a rule. Without them the scans still r
 
 ## The security pipeline
 
-### Two jobs, in parallel
+### Three jobs, in parallel
 
-The CI workflow runs `test` and `security` as two separate jobs rather than steps in one job. They are independent, so they run at the same time — faster feedback, and a failure in one is reported distinctly from the other.
+The CI workflow runs `test`, `security` and `sonarcloud` as three separate jobs rather than steps in one job. Each runs on its own fresh runner at the same time, so total time is the slowest job, not the sum — faster feedback, and a failure in one is reported distinctly from the others.
 
 ### SCA — Trivy
 
@@ -118,7 +118,11 @@ Configured to fail the job (`exit-code: 1`) on `HIGH` and `CRITICAL` findings. L
 
 SonarCloud analyses the source code itself for bugs, code smells and security issues. This is **Static Application Security Testing**: the code you *wrote*.
 
-It runs as a GitHub App watching the repository from outside, not as a step inside `ci.yml`. It reports back as its own required check.
+It runs as a job inside `ci.yml`, not as a GitHub App watching from outside. That makes the analysis deterministic — it runs because the workflow tells it to — and keeps the configuration version-controlled in the repository. The job uses full git history (`fetch-depth: 0`) so SonarCloud can work out what counts as new code, and authenticates with a token stored in GitHub Secrets, never in the repository.
+
+The scan settings live in `sonar-project.properties` rather than inline in the workflow: pipeline configuration and project configuration are different concerns, so the scan settings stay with the project while `ci.yml` just orchestrates.
+
+Automatic Analysis is switched off in SonarCloud — it is strictly either-or, and running both makes SonarCloud reject the duplicate analysis.
 
 The project follows the **clean as you code** principle: the historic baseline is acknowledged, and the gate enforces quality on *new* code so the codebase improves with every change instead of stalling behind a large backlog.
 
@@ -131,7 +135,7 @@ Every GitHub Action in the workflow is pinned to a **full commit SHA**, not a mo
 - uses: actions/checkout@v4
 
 # This — a commit hash is immutable
-- uses: actions/checkout@<full-40-character-sha>  # v4.x.x
+- uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262  # v4
 ```
 
 A tag like `v4` is a *label*. Whoever owns the action can move that label to different code at any time, and your pipeline would pull it without you noticing — a real supply-chain attack path. A commit SHA can never change under you. The version is kept in a trailing comment so the pin is still readable by a human.
@@ -154,7 +158,7 @@ A known-vulnerable dependency was introduced on a branch: `requests==2.19.1`, af
 
 The dependency was then bumped to a patched version, all three checks turned green, and the pull request was merged honestly.
 
-> _[Attach screenshot: security-gate-blocks-merge.png]_
+![The security check failing and the merge button locked](docs/security-gate-blocks-merge.png)
 
 This is the single most important artefact in the project: evidence that the gate stops a genuine vulnerability, not just a synthetic one.
 
@@ -203,7 +207,7 @@ nginx runs on the host and is the only thing listening publicly.
 ```nginx
 server {
     listen 80;
-    server_name <vps-ip>;
+    server_name <server-ip>;
 
     location / {
         proxy_pass http://127.0.0.1:8000;
@@ -214,6 +218,8 @@ server {
     }
 }
 ```
+
+The server's public IP is intentionally omitted from this README for security.
 
 `proxy_pass` **is** the reverse proxy: it forwards each request to the single app on localhost. (Forwarding to one app — not load balancing, which splits traffic across several copies.) The `proxy_set_header` lines pass the original visitor's details through, so the application is not blind to who is really calling.
 
@@ -240,6 +246,7 @@ nginx is installed on the host rather than containerised. For a single service t
 - Pinning to commit SHAs instead of tags closes a real supply-chain path — and it costs nothing.
 - Docker's iptables rules bypass UFW. A firewall rule you assumed was protecting you may not be.
 - SCA and SAST answer different questions: the code you depend on, and the code you wrote. A serious pipeline needs both.
+- Running a scanner inside the pipeline beats an external app: it is deterministic, and its configuration lives in the repository as code.
 
 ---
 
